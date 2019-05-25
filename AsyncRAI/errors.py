@@ -40,6 +40,11 @@ class ResourceStartError(ResourceError):
 	def __init__(self, name = "Unknown resource"):
 		super(ResourceStartError, self).__init__("{} failed to start", name)
 
+class ResourceProcessingError(ResourceError):
+
+	def __init__(self, name = "Unknown resource"):
+		super(ResourceProcessingError, self).__init__("{} failed to process", name)
+
 class ResourceStopError(ResourceError):
 
 	def __init__(self, name = "Unknown resource"):

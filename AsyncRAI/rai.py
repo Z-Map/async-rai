@@ -37,6 +37,8 @@ class ResourceResult(object):
 
 	def get(self, timeout=None):
 		if self.wait:
+			if isinstance(self.result, BaseException):
+				raise ResourceProcessingError(self.interface.name) from self.result
 			return self.result
 		else:
 			raise InterfaceTimeoutError()
