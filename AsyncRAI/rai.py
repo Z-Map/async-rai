@@ -26,9 +26,14 @@ class State(Enum):
 
 class ResourceResult(object):
 
-	def __init__(self, interface):
+	def __init__(self, interface, args, kwargs):
 		self.interface = interface
 		self.evt = threading.Event()
+		self._args = args or ()
+		self._kwargs = kwargs or {}
+
+	def get_args(self):
+		return (self, self._args, self._kwargs)
 
 	def wait(self, timeout=None):
 		if not self.evt.wait(timeout=timeout):
@@ -51,6 +56,13 @@ class ResourceResult(object):
 	def available(self):
 		return self.evt.is_set()
 
+	@property
+	def args(self):
+		return self.evt.is_set()
+
+	@property
+	def kwargs(self):
+		return self.evt.is_set()
 	
 
 class ResourceAccessInterface(threading.Thread):
@@ -99,7 +111,7 @@ class ResourceAccessInterface(threading.Thread):
 
 	def process_resource(self, context, res_call):
 		self._state = State.PROCESSING
-		res_ob, args, kwargs = res_call
+		res_ob, args, kwargs = res_call.get_args()
 		ret = True
 		try:
 			result = self._resource(*args, **kwargs)
@@ -135,6 +147,11 @@ class ResourceAccessInterface(threading.Thread):
 	def q_wake_up(self):
 		self._q_cond.notify()
 
+	def q_send_command(self, res_ob):
+		self._commands.append(res_ob)
+		self.p_wake_up()
+		return res_ob
+
 	def run(self):
 		self._state = State.INITIALISING
 		with self._edit_lock:
@@ -164,15 +181,12 @@ class ResourceAccessInterface(threading.Thread):
 			self.p_wake_up()
 
 	def call(self, *args, **kwargs):
-
-		res_ob = ResourceResult(self)
+		res_ob = ResourceResult(self, args, kwargs)
 		with self._edit_lock:
 			while len(self._commands) >= self.max_q:
 				self.q_wait()
 			if self._alive:
-				self._commands.append((res_ob, args, kwargs))
-				self.p_wake_up()
-				return res_ob
+				return self.q_send_command(res_ob)
 			else:
 				raise InterfaceClosedError(self.name)
 
