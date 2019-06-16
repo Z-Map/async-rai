@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from . import errors
-from .rai import ResourceAccessInterface, State
-from .asyncrai import AsyncResourceAccessInterface
+from .arai import errors
+from .rai import ResourceAccessInterface
+from .arai.arai import AsyncResourceAccessInterface as AsyncInterface

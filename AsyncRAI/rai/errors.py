@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 
+
 class InterfaceError(Exception):
-	def __init__(self, msg, *args, **kwars):
-		if args or kwars:
-			msg = msg.format(*args, **kwars)
+	def __init__(self, msg, *args, **kwargs):
+		if args or kwargs:
+			msg = msg.format(*args, **kwargs)
 		self.msg = msg
 
 	def __str__(self):
 		return (str(self.msg))
 
+
 class InterfaceClosedError(InterfaceError):
 
 	def __init__(self, name = "unknown resource"):
 		super(InterfaceClosedError, self).__init__("Interface for {} is closed", name)
+
 
 class InterfaceTimeoutError(TimeoutError, InterfaceError):
 	
@@ -21,29 +24,49 @@ class InterfaceTimeoutError(TimeoutError, InterfaceError):
 		InterfaceError.__init__(msg, name)
 
 
+class InterfaceResultError(InterfaceError):
+
+	def __init__(self, msg, *args, **kwargs):
+		super(InterfaceResultError, self).__init__(msg, *args, **kwargs)
+
+class InterfaceResultCancelled(InterfaceResultError):
+	pass
+
 class ResourceError(Exception):
-	def __init__(self, msg, *args, **kwars):
-		if args or kwars:
-			msg = msg.format(*args, **kwars)
+	
+	def __init__(self, msg, *args, **kwargs):
+		if args or kwargs:
+			msg = msg.format(*args, **kwargs)
 		self.msg = msg
 
 	def __str__(self):
 		return (str(self.msg))
 
+
+class ResourceTypeError(TypeError, ResourceError):
+
+	def __init__(self, name = "Unknown resource", msg = "{} has a wrong type"):
+		TypeError.__init__(self)
+		ResourceError.__init__(self, msg, name)
+
+
 class ResourceConfigError(ResourceError):
 
 	def __init__(self, name = "Unknown resource"):
-		super(ResourceConfigError, self).__init__("configuration error for {}", name)
+		super(ResourceConfigError, self).__init__("Configuration error for {}", name)
+
 
 class ResourceStartError(ResourceError):
 
 	def __init__(self, name = "Unknown resource"):
 		super(ResourceStartError, self).__init__("{} failed to start", name)
 
+
 class ResourceProcessingError(ResourceError):
 
 	def __init__(self, name = "Unknown resource"):
 		super(ResourceProcessingError, self).__init__("{} failed to process", name)
+
 
 class ResourceStopError(ResourceError):
 
