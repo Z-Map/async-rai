@@ -20,7 +20,6 @@ def sync_test():
 	for res in r:
 		print(res.get())
 	rai.stop()
-	rai.join()
 
 async def async_test():
 	arai = AsyncRAI.AsyncInterface(displayer, "Displayer")
@@ -35,7 +34,6 @@ async def async_test():
 	for res in r:
 		print(await res)
 	arai.stop()
-	arai.join()
 
 if __name__ == "__main__":
 	sync_test()

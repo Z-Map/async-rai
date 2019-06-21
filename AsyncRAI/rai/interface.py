@@ -25,30 +25,13 @@ class State(Enum):
 	def __str__(self):
 		return self.name
 
-class ResourceAccessInterface(threading.Thread):
+class AccessInterface(object):
 
-	def __init__(self, resource, name=None, max_q=512, context_arg=None):
-		if name is None:
-			name = resource.__name__ or "Unknown"
-		super(ResourceAccessInterface, self).__init__(name=name)
-		if not callable(resource):
-			raise ResourceTypeError(name, "Resource {} is not callable")
-		if context_arg is None:
-			try:
-				sig = inspect.signature(resource)
-			except (ValueError, TypeError):
-				context_arg = False
-			else:
-				if sig.parameters and tuple(sig.parameters.keys())[0] == 'context':
-					context_arg = True
-				else:
-					context_arg = False
+	NOT_IMPLEMENTED_TEXT = "This interface is abstract and should not be used directly"
+
+	def __init__(self, name, max_q=512):
+		super(AccessInterface, self).__init__(name=name)
 		self._alive = False
-		self._edit_lock = threading.Lock()
-		self._processing_cond = threading.Condition(self._edit_lock)
-		self._q_cond = threading.Condition(self._edit_lock)
-		self._resource = resource
-		self._context_arg = bool(context_arg)
 		self._commands = []
 		self._max_q = max_q if max_q > 0 else 1
 		self._state = State.CREATED
@@ -68,6 +51,133 @@ class ResourceAccessInterface(threading.Thread):
 		else:
 			self._max_q = 1
 		return self._max_q
+
+	def _config_interface(self, context):
+		self._state = State.CONFIGURING
+		return True
+
+	def _start_interface(self, context):
+		self._state = State.STARTING
+		return True
+
+	def _process_interface(self, context, *args, **kwargs):
+		self._state = State.PROCESSING
+		raise NotImplementedError(AccessInterface.NOT_IMPLEMENTED_TEXT)
+
+	def _stop_interface(self, context):
+		self._state = State.STOPPING
+		return True
+
+	def r_lock(self, timeout=None):
+		return NotImplemented
+
+	def r_unlock(self):
+		return NotImplemented
+
+	def r_wait(self, timeout=None):
+		return NotImplemented
+
+	def r_wake_up(self):
+		return NotImplemented
+
+	def r_receive_command(self, timeout=None):
+		self.r_lock(timeout=timeout)
+		if self._commands or self.q_wait(timeout=timeout):
+			q = self._commands.pop(0)
+			self.r_wake_up()
+		else:
+			q = None
+		self.r_unlock()
+		return q
+
+	def r_process(self, context, q):
+		if q is None:
+			return False
+		future, args, kwargs = q.get_args()
+		if not future.cancelled():
+			try:
+				result = self._process_interface(context, *args, **kwargs)
+			except Exception as err:
+				future.set_exception(err)
+			else:
+				future.set_result(result)
+				return True
+		return False
+
+	def r_done(self, context, q, r):
+		return NotImplemented
+
+	def q_lock(self, timeout=None):
+		return NotImplemented
+
+	def q_unlock(self):
+		return NotImplemented
+
+	def q_wait(self, timeout=None):
+		self._state = State.WAITING
+		if not self._alive:
+			return self._commands
+		return NotImplemented
+
+	def q_wake_up(self):
+		return NotImplemented
+
+	def q_create(self, args, kwargs):
+		return ResourceResult(self, args, kwargs)
+
+	def q_get_place(self, timeout=None):
+		while len(self._commands) >= self.max_q:
+			self.r_wait(timeout=timeout)
+		return self._alive
+
+	def q_send_command(self, future):
+		self._commands.append(future)
+		self.q_wake_up()
+		return future
+
+	def q_process(self, args, kwargs, timeout=None):
+		future = self.q_create(args, kwargs)
+		self.q_lock(timeout=timeout)
+		if self.q_get_place(timeout=timeout):
+			future = self.q_send_command(future)
+		else:
+			self.q_unlock()
+			if self._alive:
+				raise InterfaceTimeoutError(self.name)
+			else:
+				raise InterfaceClosedError(self.name)
+		self.q_unlock()
+		return future
+
+	def process(self, timeout=None):
+		context = {}
+		self._state = State.INITIALISED
+		self.config_resource(context)
+		self._state = State.CONFIGURED
+		self.start_resource(context)
+		self._state = State.STARTED
+		while self._alive:
+			q = self.r_receive_command(timeout=timeout)
+			r = self.r_process(context, q)
+			self.r_done(q, r)
+		self.stop_resource(context)
+		self._state = State.STOPPED
+
+	def call(self, *args, **kwargs):
+		return self.q_process(args, kwargs)
+
+	def __call__(self, *args, **kwargs):
+		return self.call(*args, **kwargs)
+
+class ThreadedAccessInterface(threading.Thread):
+
+	def __init__(self, name, max_q=512):
+		super(ThreadedAccessInterface, self).__init__(name=name)
+		self._edit_lock = threading.Lock()
+		self._processing_cond = threading.Condition(self._edit_lock)
+		self._q_cond = threading.Condition(self._edit_lock)
+		self._resource = resource
+		self._context_arg = bool(context_arg)
 
 	def p_lock(self):
 		self._edit_lock.acquire()

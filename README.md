@@ -17,6 +17,26 @@ The content of the package is very minimale :
 Here is an usage example for the base implementation :
 
 ```python
+# Create a callable object to use as resource
+import AsyncRAI
 
+def displayer(context, *args):
+	print("Args : {}".format(args))
+	return "Displayed {} args".format(len(args))
 
+# Initialise the interface
+interface = AsyncRAI.ResourceAccessInterface(displayer, "Displayer Interface")
+interface.start()
+
+# Send a command to the resource
+result = interface("Hello world")
+
+# Get the return of the command
+if result.available: # true if the result is set else false
+	print(result.result()) # 
+# OR
+print(result.get()) # Wait for the result (WARNING : This will stop the process until the result is available)
+
+# Stop the interface
+interface.stop()
 ```
