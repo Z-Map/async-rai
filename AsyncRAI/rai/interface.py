@@ -83,8 +83,9 @@ class AccessInterface(object):
 		return NotImplemented
 
 	def r_receive_command(self, timeout=None):
-		self.r_lock(timeout=timeout)
-		if self._commands or self.q_wait(timeout=timeout):
+		if not self.r_lock(timeout=timeout):
+			raise InterfaceTimeoutError(self.name)
+		if self._commands or (self.q_wait(timeout=timeout) and self._commands):
 			q = self._commands.pop(0)
 			self.r_wake_up()
 		else:
@@ -139,16 +140,18 @@ class AccessInterface(object):
 
 	def q_process(self, args, kwargs, timeout=None):
 		future = self.q_create(args, kwargs)
-		self.q_lock(timeout=timeout)
-		if self.q_get_place(timeout=timeout):
-			future = self.q_send_command(future)
-		else:
-			self.q_unlock()
-			if self._alive:
-				raise InterfaceTimeoutError(self.name)
+		if self.q_lock(timeout=timeout):
+			if self.q_get_place(timeout=timeout):
+				future = self.q_send_command(future)
 			else:
-				raise InterfaceClosedError(self.name)
-		self.q_unlock()
+				self.q_unlock()
+				if self._alive:
+					raise InterfaceTimeoutError(self.name)
+				else:
+					raise InterfaceClosedError(self.name)
+			self.q_unlock()
+		else:
+			raise InterfaceTimeoutError(self.name)
 		return future
 
 	def process(self, timeout=None):
@@ -161,7 +164,7 @@ class AccessInterface(object):
 		while self._alive:
 			q = self.r_receive_command(timeout=timeout)
 			r = self.r_process(context, q)
-			self.r_done(q, r)
+			self.r_done(context, q, r)
 		self.stop_resource(context)
 		self._state = State.STOPPED
 
@@ -180,31 +183,37 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 		self._processing_cond = threading.Condition(self._edit_lock)
 		self._q_cond = threading.Condition(self._edit_lock)
 
-	def r_lock(self):
+	def r_lock(self, timeout=None):
 		if not self._edit_lock.locked():
-			self._edit_lock.acquire()
+			if timeout is None:
+				timeout = -1
+			return self._edit_lock.acquire(timeout=timeout)
+		return True
 
 	def r_unlock(self):
 		if self._edit_lock.locked():
 			self._edit_lock.release()
 
-	def r_wait(self):
+	def r_wait(self, timeout = None):
 		self._state = State.WAITING
-		self._processing_cond.wait()
+		return self._processing_cond.wait(timeout=timeout)
 
 	def r_wake_up(self):
 		self._processing_cond.notify_all()
 
-	def q_lock(self):
+	def q_lock(self, timeout=None):
 		if not self._edit_lock.locked():
-			self._edit_lock.acquire()
+			if timeout is None:
+				timeout = -1
+			return self._edit_lock.acquire(timeout=timeout)
+		return True
 
 	def q_unlock(self):
 		if self._edit_lock.locked():
 			self._edit_lock.release()
 
-	def q_wait(self):
-		self._q_cond.wait()
+	def q_wait(self, timeout = None):
+		return self._q_cond.wait(timeout=timeout)
 
 	def q_wake_up(self):
 		self._q_cond.notify()
@@ -215,7 +224,7 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 	def start_resource(self, context):
 		return NotImplemented
 
-	def process_resource(self, context, res_call):
+	def process_resource(self, context, args, kwargs):
 		return NotImplemented
 
 	def stop_resource(self, context):
@@ -234,7 +243,7 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 
 	def _process_interface(self, context, *args, **kwargs):
 		if super()._process_interface(context, *args, **kwargs):
-			ret = self.process_resource()
+			ret = self.process_resource(context, args, kwargs)
 			if ret is NotImplemented:
 				raise NotImplementedError(AccessInterface.NOT_IMPLEMENTED_TEXT)
 			else:
