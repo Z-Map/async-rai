@@ -30,7 +30,7 @@ class AccessInterface(object):
 	NOT_IMPLEMENTED_TEXT = "This interface is abstract and should not be used directly"
 
 	def __init__(self, name, max_q=512):
-		super(AccessInterface, self).__init__(name=name)
+		super(AccessInterface, self).__init__()
 		self._alive = False
 		self._commands = []
 		self._max_q = max_q if max_q > 0 else 1
@@ -62,7 +62,7 @@ class AccessInterface(object):
 
 	def _process_interface(self, context, *args, **kwargs):
 		self._state = State.PROCESSING
-		raise NotImplementedError(AccessInterface.NOT_IMPLEMENTED_TEXT)
+		return True
 
 	def _stop_interface(self, context):
 		self._state = State.STOPPING
@@ -75,6 +75,8 @@ class AccessInterface(object):
 		return NotImplemented
 
 	def r_wait(self, timeout=None):
+		if not self._alive:
+			return False
 		return NotImplemented
 
 	def r_wake_up(self):
@@ -90,7 +92,7 @@ class AccessInterface(object):
 		self.r_unlock()
 		return q
 
-	def r_process(self, context, q):
+	def r_process(self, context, q) -> bool:
 		if q is None:
 			return False
 		future, args, kwargs = q.get_args()
@@ -164,33 +166,42 @@ class AccessInterface(object):
 		self._state = State.STOPPED
 
 	def call(self, *args, **kwargs):
-		return self.q_process(args, kwargs)
+		raise NotImplementedError(AccessInterface.NOT_IMPLEMENTED_TEXT)
 
 	def __call__(self, *args, **kwargs):
 		return self.call(*args, **kwargs)
 
-class ThreadedAccessInterface(threading.Thread):
+class ThreadedAccessInterface(threading.Thread, AccessInterface):
 
 	def __init__(self, name, max_q=512):
-		super(ThreadedAccessInterface, self).__init__(name=name)
+		threading.Thread.__init__(self, name=name)
+		AccessInterface.__init__(self, name, max_q=max_q)
 		self._edit_lock = threading.Lock()
 		self._processing_cond = threading.Condition(self._edit_lock)
 		self._q_cond = threading.Condition(self._edit_lock)
-		self._resource = resource
-		self._context_arg = bool(context_arg)
 
-	def p_lock(self):
-		self._edit_lock.acquire()
+	def r_lock(self):
+		if not self._edit_lock.locked():
+			self._edit_lock.acquire()
 
-	def p_unlock(self):
-		self._edit_lock.release()
+	def r_unlock(self):
+		if self._edit_lock.locked():
+			self._edit_lock.release()
 
-	def p_wait(self):
+	def r_wait(self):
 		self._state = State.WAITING
 		self._processing_cond.wait()
 
-	def p_wake_up(self):
+	def r_wake_up(self):
 		self._processing_cond.notify_all()
+
+	def q_lock(self):
+		if not self._edit_lock.locked():
+			self._edit_lock.acquire()
+
+	def q_unlock(self):
+		if self._edit_lock.locked():
+			self._edit_lock.release()
 
 	def q_wait(self):
 		self._q_cond.wait()
@@ -198,98 +209,58 @@ class ThreadedAccessInterface(threading.Thread):
 	def q_wake_up(self):
 		self._q_cond.notify()
 
-	def q_create(self, args, kwargs):
-		return ResourceResult(self, args, kwargs)
-
-	def q_get_place(self):
-		while len(self._commands) >= self.max_q:
-			self.q_wait()
-		return self._alive
-
-	def q_send_command(self, res_ob):
-		self._commands.append(res_ob)
-		self.p_wake_up()
-		return res_ob
-
 	def config_resource(self, context):
-		self._state = State.CONFIGURING
-		if hasattr(self._resource, "configure"):
-			if not self._resource.configure(context):
-				raise ResourceConfigError(self.name)
-		return True
+		return NotImplemented
 
 	def start_resource(self, context):
-		self._state = State.STARTING
-		if hasattr(self._resource, "start"):
-			if not self._resource.start(context):
-				raise ResourceStartError(self.name)
-		return True
+		return NotImplemented
 
 	def process_resource(self, context, res_call):
-		self._state = State.PROCESSING
-		res_ob, args, kwargs = res_call.get_args()
-		if res_ob.cancelled():
-			return False
-		ret = True
-		try:
-			if self._context_arg:
-				result = self._resource(context, *args, **kwargs)
-			else:
-				result = self._resource(*args, **kwargs)
-		except Exception as err:
-			res_ob.set_exception(err)
-			ret = False
-		else:
-			res_ob.set_result(result)
-		return ret
+		return NotImplemented
 
 	def stop_resource(self, context):
-		self._state = State.STOPPING
-		if hasattr(self._resource, "stop"):
-			if not self._resource.stop(context):
-				raise ResourceStartError(self.name)
-		return True
+		return NotImplemented
+
+
+	def _config_interface(self, context):
+		if super()._config_interface(context):
+			return self.config_resource()
+		return False
+
+	def _start_interface(self, context):
+		if super()._start_interface(context):
+			return self.start_resource()
+		return False
+
+	def _process_interface(self, context, *args, **kwargs):
+		if super()._process_interface(context, *args, **kwargs):
+			ret = self.process_resource()
+			if ret is NotImplemented:
+				raise NotImplementedError(AccessInterface.NOT_IMPLEMENTED_TEXT)
+			else:
+				return ret
+		return False
+
+	def _stop_interface(self, context):
+		if super()._stop_interface(context):
+			return self.stop_resource()
+		return False
 
 	def run(self):
 		self._state = State.INITIALISING
 		with self._edit_lock:
 			self._alive = True
-		context = {}
-		self._state = State.INITIALISED
-		self.config_resource(context)
-		self._state = State.CONFIGURED
-		self.start_resource(context)
-		self._state = State.STARTED
-		self.p_lock()
-		while self._alive:
-			while self._commands:
-				res_call = self._commands.pop(0)
-				self.q_wake_up()
-				self.p_unlock()
-				self.process_resource(context, res_call)
-				self.p_lock()
-			self.p_wait()
-		self.p_unlock()
-		self.stop_resource(context)
-		self._state = State.STOPPED
+		self.process()
 
 	def stop_request(self):
 		with self._edit_lock:
 			self._alive = False
-			self.p_wake_up()
+			self.q_wake_up()
 
 	def stop(self, timeout=None):
 		self.stop_request()
 		self.join(timeout)
 		return not(self.is_alive())
-	
-	def call(self, *args, **kwargs):
-		res_ob = self.q_create(args, kwargs)
-		with self._edit_lock:
-			if self.q_get_place():
-				return self.q_send_command(res_ob)
-			else:
-				raise InterfaceClosedError(self.name)
 
-	def __call__(self, *args, **kwargs):
-		return self.call(*args, **kwargs)
+	def call(self, *args, **kwargs):
+		return self.q_process(args, kwargs)
