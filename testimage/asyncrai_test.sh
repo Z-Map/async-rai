@@ -1,3 +1,4 @@
-curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
+export PATH=$PATH:$HOME/.poetry/bin
+echo "Starting tests ..."
 poetry install
 poetry run pytest tests/simple_test.py
