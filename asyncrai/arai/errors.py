@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
 
-from AsyncRAI.rai.errors import *
+from asyncrai.rai.errors import *
 
 class ResultInvalidState(asyncio.InvalidStateError, InterfaceResultError):
 

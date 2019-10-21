@@ -2,7 +2,7 @@ import asyncio
 
 from .errors import *
 from .result import AsyncResourceResult
-from AsyncRAI.rai import ResourceAccessInterface
+from asyncrai.rai import ResourceAccessInterface
 
 class AsyncResourceAccessInterface(ResourceAccessInterface):
 

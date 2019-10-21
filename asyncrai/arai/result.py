@@ -3,7 +3,7 @@
 import asyncio
 
 from .errors import *
-from AsyncRAI.rai.result import ResourceResult, State
+from asyncrai.rai.result import ResourceResult, State
 
 class AsyncResourceResult(ResourceResult):
 

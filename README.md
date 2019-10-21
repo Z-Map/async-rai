@@ -18,14 +18,14 @@ Here is an usage example for the base implementation :
 
 ```python
 # Create a callable object to use as resource
-import AsyncRAI
+import asyncrai
 
 def displayer(context, *args):
 	print("Args : {}".format(args))
 	return "Displayed {} args".format(len(args))
 
 # Initialise the interface
-interface = AsyncRAI.ResourceAccessInterface(displayer, "Displayer Interface")
+interface = asyncrai.ResourceAccessInterface(displayer, "Displayer Interface")
 interface.start()
 
 # Send a command to the resource

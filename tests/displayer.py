@@ -1,5 +1,5 @@
 import asyncio
-import AsyncRAI
+import asyncrai
 
 def displayer(context, *args, **kwargs):
 	print("Args : {}".format(", ".join([str(a) for a in args])))
@@ -7,7 +7,7 @@ def displayer(context, *args, **kwargs):
 	return "Displayed {} args and {} kwargs".format(len(args), len(kwargs))
 
 def sync_test():
-	rai = AsyncRAI.ResourceAccessInterface(displayer, "Displayer")
+	rai = asyncrai.ResourceAccessInterface(displayer, "Displayer")
 	rai.start()
 	r = rai("hello")
 	print(r.get())
@@ -22,7 +22,7 @@ def sync_test():
 	rai.stop()
 
 async def async_test():
-	arai = AsyncRAI.AsyncInterface(displayer, "Displayer")
+	arai = asyncrai.AsyncInterface(displayer, "Displayer")
 	arai.start()
 	print(await arai("hello"))
 	r = await arai.async_call("hello two", test=42)
