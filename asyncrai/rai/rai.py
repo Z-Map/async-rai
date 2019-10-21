@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-
-from enum import Enum
+""" RAI module
+"""
 
 import inspect
-import threading
-import queue
 
-from .errors import ResourceTypeError, ResourceError, ResourceConfigError, ResourceStartError, ResourceStopError
-from .interface import ThreadedAccessInterface, State
+from .errors import ResourceTypeError, ResourceConfigError,\
+	ResourceStartError, ResourceStopError
+from .interface import ThreadedAccessInterface
 
 class ResourceAccessInterface(ThreadedAccessInterface):
 
@@ -23,10 +22,8 @@ class ResourceAccessInterface(ThreadedAccessInterface):
 			except (ValueError, TypeError):
 				context_arg = False
 			else:
-				if sig.parameters and tuple(sig.parameters.keys())[0] == 'context':
-					context_arg = True
-				else:
-					context_arg = False
+				context_arg = bool(sig.parameters
+					and tuple(sig.parameters.keys())[0] == 'context')
 		self._resource = resource
 		self._context_arg = bool(context_arg)
 

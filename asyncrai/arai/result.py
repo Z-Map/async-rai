@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
+""" Async Result module
+"""
 
 import asyncio
 
-from .errors import *
+from .errors import InterfaceResultError, ResultCancelled, ResultInvalidState
 from asyncrai.rai.result import ResourceResult, State
 
 class AsyncResourceResult(ResourceResult):
+	""" Async result object """
 
 	def __init__(self, interface, args, kwargs):
 		self._loop = asyncio.get_running_loop()
 		self._fut = self._loop.create_future()
 		self.interface = interface
-		self._args: tuple= args or ()
-		self._kwargs: dict= kwargs or {}
-		self._state: State= 0
+		self._args: tuple = args or ()
+		self._kwargs: dict = kwargs or {}
+		self._state: State = 0
 		self._result = None
 		self._exception = None
 
@@ -32,7 +35,8 @@ class AsyncResourceResult(ResourceResult):
 		elif self._state == State.CANCELLED:
 			self._fut.cancel()
 		else:
-			raise InterfaceResultError("This error should never be raised ! the internal state of the result is compromised")
+			raise InterfaceResultError("This error should never be raised !"
+				+ "the internal state of the result is compromised")
 
 	def _set_state(self, state):
 		self._state = state

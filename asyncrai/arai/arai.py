@@ -1,6 +1,9 @@
+# -*- coding: utf-8 -*-
+""" Async RAI module
+"""
 import asyncio
 
-from .errors import *
+from .errors import InterfaceClosedError
 from .result import AsyncResourceResult
 from asyncrai.rai import ResourceAccessInterface
 
@@ -28,12 +31,12 @@ class AsyncResourceAccessInterface(ResourceAccessInterface):
 			if loop not in self._loops:
 				self._loops[loop] = [asyncio.Event(), 1]
 			else:
-				self._loops[loop][1] += 1 
+				self._loops[loop][1] += 1
 			while len(self._commands) >= self.max_q:
-				self.p_unlock()
+				self.q_unlock()
 				self._loops[loop][0].clear()
 				await self._loops[loop][0].wait()
-				self.p_lock()
+				self.q_lock()
 			self._loops[loop][1] -= 1
 			if self._loops[loop][1] <= 0:
 				del self._loops[loop]
@@ -41,11 +44,14 @@ class AsyncResourceAccessInterface(ResourceAccessInterface):
 
 	async def async_call(self, *args, **kwargs):
 		res_ob = await self.async_q_create(args, kwargs)
-		with self._edit_lock:
-			if await self.async_q_get_place():
-				return self.q_send_command(res_ob).future
-			else:
-				raise InterfaceClosedError(self.name)
+		self.q_lock()
+		if await self.async_q_get_place():
+			res_ob = self.q_send_command(res_ob).future
+		else:
+			self.q_unlock()
+			raise InterfaceClosedError(self.name)
+		self.q_unlock()
+		return res_ob
 
 	async def __call__(self, *args, **kwargs):
 		fut = await self.async_call(*args, **kwargs)

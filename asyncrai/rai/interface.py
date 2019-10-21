@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
+""" Interface Access Model module
+"""
 
 from enum import Enum
 
-import inspect
 import threading
-import queue
 
-from .errors import *
+from .errors import InterfaceTimeoutError, InterfaceClosedError
 from .result import ResourceResult
 
 class State(Enum):
@@ -25,12 +25,14 @@ class State(Enum):
 	def __str__(self):
 		return self.name
 
-class AccessInterface(object):
+class AccessInterface():
 
-	NOT_IMPLEMENTED_TEXT = "This interface is abstract and should not be used directly"
+	NOT_IMPLEMENTED_TEXT = ("This interface is abstract and "
+							"should not be used directly")
 
 	def __init__(self, name, max_q=512):
 		super(AccessInterface, self).__init__()
+		self.name = name
 		self._alive = False
 		self._commands = []
 		self._max_q = max_q if max_q > 0 else 1
@@ -119,7 +121,7 @@ class AccessInterface(object):
 	def q_wait(self, timeout=None):
 		self._state = State.WAITING
 		if not self._alive:
-			return self._commands
+			return bool(self._commands)
 		return NotImplemented
 
 	def q_wake_up(self):
@@ -157,15 +159,15 @@ class AccessInterface(object):
 	def process(self, timeout=None):
 		context = {}
 		self._state = State.INITIALISED
-		self.config_resource(context)
+		self._config_interface(context)
 		self._state = State.CONFIGURED
-		self.start_resource(context)
+		self._start_interface(context)
 		self._state = State.STARTED
 		while self._alive:
 			q = self.r_receive_command(timeout=timeout)
 			r = self.r_process(context, q)
 			self.r_done(context, q, r)
-		self.stop_resource(context)
+		self._stop_interface(context)
 		self._state = State.STOPPED
 
 	def call(self, *args, **kwargs):
@@ -194,9 +196,12 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 		if self._edit_lock.locked():
 			self._edit_lock.release()
 
-	def r_wait(self, timeout = None):
-		self._state = State.WAITING
-		return self._processing_cond.wait(timeout=timeout)
+	def r_wait(self, timeout=None):
+		ret = super().r_wait()
+		if ret is NotImplemented:
+			self._state = State.WAITING
+			return self._processing_cond.wait(timeout=timeout)
+		return ret
 
 	def r_wake_up(self):
 		self._processing_cond.notify_all()
@@ -212,7 +217,7 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 		if self._edit_lock.locked():
 			self._edit_lock.release()
 
-	def q_wait(self, timeout = None):
+	def q_wait(self, timeout=None):
 		return self._q_cond.wait(timeout=timeout)
 
 	def q_wake_up(self):
@@ -233,12 +238,12 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 
 	def _config_interface(self, context):
 		if super()._config_interface(context):
-			return self.config_resource()
+			return self.config_resource(context)
 		return False
 
 	def _start_interface(self, context):
 		if super()._start_interface(context):
-			return self.start_resource()
+			return self.start_resource(context)
 		return False
 
 	def _process_interface(self, context, *args, **kwargs):
@@ -252,7 +257,7 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 
 	def _stop_interface(self, context):
 		if super()._stop_interface(context):
-			return self.stop_resource()
+			return self.stop_resource(context)
 		return False
 
 	def run(self):
@@ -269,7 +274,7 @@ class ThreadedAccessInterface(threading.Thread, AccessInterface):
 	def stop(self, timeout=None):
 		self.stop_request()
 		self.join(timeout)
-		return not(self.is_alive())
+		return not self.is_alive()
 
 	def call(self, *args, **kwargs):
 		return self.q_process(args, kwargs)
