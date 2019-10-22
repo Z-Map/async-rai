@@ -9,9 +9,9 @@ More detail in the spec folder.
 
 ## The package
 The content of the package is very minimale :
-	- A very barebone implementation of the base interface from the spec in the rai.py module
-	- An asyncio compatible implementation of the base interface inheritead from the previous one in the asyncrai.py module
-	- Exceptions needed by the both module in errors.py
+- A very barebone implementation of the base interface from the spec in the 	rai.py module
+- An asyncio compatible implementation of the base interface inheritead from 	the previous one in the asyncrai.py module
+- Exceptions needed by the both module in errors.py
 
 ## Usage
 Here is an usage example for the base implementation :
